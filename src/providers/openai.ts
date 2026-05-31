@@ -15,6 +15,7 @@ interface OpenAIProviderOptions {
   apiKey?: string;
   embeddingsBaseURL?: string;
   embeddingModel?: string;
+  completionExtraBody?: Record<string, unknown>;
   /**
    * Per-request timeout in milliseconds. Defaults to 10 minutes for cloud
    * OpenAI (matches the SDK default). Long compile-time completions on
@@ -62,10 +63,12 @@ export class OpenAIProvider implements LLMProvider {
   protected readonly embeddingsClient: OpenAI;
   protected readonly model: string;
   protected readonly configuredEmbeddingModel?: string;
+  protected readonly completionExtraBody?: Record<string, unknown>;
 
   constructor(model: string, options: OpenAIProviderOptions = {}) {
     this.model = model;
     this.configuredEmbeddingModel = options.embeddingModel;
+    this.completionExtraBody = options.completionExtraBody;
     // The OpenAI SDK validates OPENAI_API_KEY at construction time.
     // Pass the key explicitly so the provider controls when validation happens.
     const resolvedKey = options.apiKey ?? process.env.OPENAI_API_KEY ?? "";
@@ -80,13 +83,28 @@ export class OpenAIProvider implements LLMProvider {
       : this.client;
   }
 
+  /**
+   * Merge provider-specific extensions into OpenAI-compatible chat requests.
+   *
+   * Some OpenAI-compatible APIs accept non-OpenAI fields, such as DeepSeek's
+   * `thinking` option. Core request fields win on collision so extra body
+   * values can add provider-specific fields without silently replacing model,
+   * messages, tools, or streaming settings.
+   */
+  private withCompletionExtraBody<T extends Record<string, unknown>>(params: T): T {
+    if (!this.completionExtraBody) return params;
+    return { ...this.completionExtraBody, ...params } as T;
+  }
+
   /** Send a single non-streaming completion request. */
   async complete(system: string, messages: LLMMessage[], maxTokens: number): Promise<string> {
-    const response = await this.client.chat.completions.create({
-      model: this.model,
-      max_tokens: maxTokens,
-      messages: [{ role: "system", content: system }, ...messages],
-    });
+    const response = await this.client.chat.completions.create(
+      this.withCompletionExtraBody({
+        model: this.model,
+        max_tokens: maxTokens,
+        messages: [{ role: "system", content: system }, ...messages],
+      }) as OpenAI.ChatCompletionCreateParamsNonStreaming,
+    );
 
     return response.choices[0]?.message?.content ?? "";
   }
@@ -98,12 +116,14 @@ export class OpenAIProvider implements LLMProvider {
     maxTokens: number,
     onToken?: (text: string) => void,
   ): Promise<string> {
-    const stream = await this.client.chat.completions.create({
-      model: this.model,
-      max_tokens: maxTokens,
-      messages: [{ role: "system", content: system }, ...messages],
-      stream: true,
-    });
+    const stream = await this.client.chat.completions.create(
+      this.withCompletionExtraBody({
+        model: this.model,
+        max_tokens: maxTokens,
+        messages: [{ role: "system", content: system }, ...messages],
+        stream: true,
+      }) as OpenAI.ChatCompletionCreateParamsStreaming,
+    );
 
     let fullText = "";
     for await (const chunk of stream) {
@@ -126,13 +146,15 @@ export class OpenAIProvider implements LLMProvider {
   ): Promise<string> {
     const openaiTools = tools.map(translateToolToOpenAI);
 
-    const response = await this.client.chat.completions.create({
-      model: this.model,
-      max_tokens: maxTokens,
-      messages: [{ role: "system", content: system }, ...messages],
-      tools: openaiTools,
-      tool_choice: "required",
-    });
+    const response = await this.client.chat.completions.create(
+      this.withCompletionExtraBody({
+        model: this.model,
+        max_tokens: maxTokens,
+        messages: [{ role: "system", content: system }, ...messages],
+        tools: openaiTools,
+        tool_choice: "required",
+      }) as OpenAI.ChatCompletionCreateParamsNonStreaming,
+    );
 
     const toolCalls = response.choices[0]?.message?.tool_calls;
     if (toolCalls && toolCalls.length > 0) {

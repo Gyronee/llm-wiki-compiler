@@ -59,6 +59,7 @@ describe("getProvider", () => {
     delete process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_BASE_URL;
     delete process.env.OPENAI_EMBEDDINGS_BASE_URL;
+    delete process.env.LLMWIKI_OPENAI_EXTRA_BODY;
     delete process.env.OLLAMA_HOST;
     delete process.env.OLLAMA_EMBEDDINGS_HOST;
     delete process.env[TEST_SETTINGS_PATH_ENV];
@@ -156,6 +157,25 @@ describe("getProvider", () => {
     expectClientBaseURL(provider, "client", "http://localhost:8080/v1");
     expectClientBaseURL(provider, "embeddingsClient", "http://localhost:8081/v1");
     expect(Reflect.get(provider, "configuredEmbeddingModel")).toBe("local-embed");
+  });
+
+  it("passes OpenAI-compatible extra body JSON", () => {
+    process.env.LLMWIKI_PROVIDER = "openai";
+    process.env.LLMWIKI_OPENAI_EXTRA_BODY = '{"thinking":{"type":"disabled"}}';
+
+    const provider = getProvider();
+
+    expect(provider).toBeInstanceOf(OpenAIProvider);
+    expect(Reflect.get(provider, "completionExtraBody")).toEqual({
+      thinking: { type: "disabled" },
+    });
+  });
+
+  it("rejects malformed OpenAI-compatible extra body JSON", () => {
+    process.env.LLMWIKI_PROVIDER = "openai";
+    process.env.LLMWIKI_OPENAI_EXTRA_BODY = '{"thinking":';
+
+    expect(() => getProvider()).toThrow(/Invalid LLMWIKI_OPENAI_EXTRA_BODY/);
   });
 
   it("passes Ollama chat and embedding hosts separately", () => {

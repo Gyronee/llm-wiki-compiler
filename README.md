@@ -111,6 +111,21 @@ export OPENAI_EMBEDDINGS_BASE_URL=http://host_url:port/v1
 `OPENAI_API_KEY` is still required by the CLI and OpenAI SDK. For local
 servers that do not check authentication, any dummy value is sufficient.
 
+Some OpenAI-compatible providers accept provider-specific request fields. Set
+`LLMWIKI_OPENAI_EXTRA_BODY` to a JSON object to merge those fields into chat
+completion requests. Core llmwiki fields such as `model`, `messages`, `tools`,
+and `stream` still win if keys overlap.
+
+DeepSeek V4 Flash with thinking disabled:
+
+```bash
+export LLMWIKI_PROVIDER=openai
+export OPENAI_BASE_URL=https://api.deepseek.com
+export OPENAI_API_KEY=sk-...
+export LLMWIKI_MODEL=deepseek-v4-flash
+export LLMWIKI_OPENAI_EXTRA_BODY='{"thinking":{"type":"disabled"}}'
+```
+
 ### Ollama
 
 Ollama uses its OpenAI-compatible endpoint. Set `OLLAMA_HOST` for chat and

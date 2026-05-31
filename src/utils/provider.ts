@@ -70,6 +70,7 @@ export function getProvider(): LLMProvider {
         baseURL: readOptionalEnv("OPENAI_BASE_URL"),
         embeddingsBaseURL: readOptionalEnv("OPENAI_EMBEDDINGS_BASE_URL"),
         embeddingModel: readOptionalEnv("LLMWIKI_EMBEDDING_MODEL"),
+        completionExtraBody: readOptionalJsonObjectEnv("LLMWIKI_OPENAI_EXTRA_BODY"),
       });
     case "ollama":
       return new OllamaProvider(getModelForProvider("ollama"), {
@@ -89,6 +90,25 @@ export function getProvider(): LLMProvider {
 function readOptionalEnv(name: string): string | undefined {
   const value = process.env[name]?.trim();
   return value ? value : undefined;
+}
+
+function readOptionalJsonObjectEnv(name: string): Record<string, unknown> | undefined {
+  const value = readOptionalEnv(name);
+  if (!value) return undefined;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Invalid ${name}: expected a JSON object (${message})`);
+  }
+
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`Invalid ${name}: expected a JSON object`);
+  }
+
+  return parsed as Record<string, unknown>;
 }
 
 function getModelForProvider(providerName: "openai" | "ollama" | "minimax" | "copilot"): string {
